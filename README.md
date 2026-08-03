@@ -39,6 +39,10 @@ Lies are detected mechanically, not by asking a model to judge. The engine holds
 a claim that contradicts real inventory is a string-to-state comparison — free, deterministic and
 impossible to argue with.
 
+Lies are revealed at settlement — the island is small, and by evening everyone knows who was
+holding out. The liar loses trust with its target in proportion to the size of the lie and earns a
+betrayal episode that is never pruned.
+
 Trust is deliberately asymmetric: betrayal is permanent, goodwill decays five points a day. A
 symmetric model converges on stable cooperation within a fortnight and stops being interesting.
 
@@ -46,7 +50,10 @@ symmetric model converges on stable cooperation within a fortnight and stops bei
 
 - Model is `deepseek-v4-flash` at `reasoning_effort: high`. OpenAI is an outage fallback only,
   never a per-agent model choice.
-- Hard spend cap is $50/day. Measured cost of a real day is about $0.03.
+- **Reasoning tokens count against `max_tokens`.** At effort `high` an 800-token ceiling was spent
+  entirely on thinking and returned empty replies. Keep `config.llm.maxTokens` generous; a test
+  guards the floor.
+- Hard spend cap is $50/day. Measured cost of a real day is a few cents.
 - Set `HEARSAY_MODE=fast` and `HEARSAY_FAST_DAYS=N` to fast-forward.
 - A world with fewer than two survivors, or three eventless days, is archived and a new era
   begins. Collapsed islands stay browsable — how an era ended is content, not an error.

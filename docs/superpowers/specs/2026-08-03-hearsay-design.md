@@ -67,12 +67,20 @@ Morning     Production is distributed per standing agreements from the previous 
    |
 Day         6 conversation rounds — the main event
             Agents talk freely: negotiate, trade, promise, spread claims, threaten, ally
+            Everyone in a round speaks simultaneously; rounds themselves stay ordered
    |
-Evening     Settlement: who eats, who starves, who falls ill, who is eliminated
+Evening     Settlement: the day's lies are revealed, then who eats, who starves,
+            who is eliminated
    |
 Turnover    Each elimination spawns a replacement whose personality is crossbred from the
             two longest-surviving agents, with random mutation applied to one trait
 ```
+
+**Lies are revealed at settlement.** The island is small enough that everyone sees who actually
+ate and who was holding out, so a lie told during the day costs the liar trust with its target
+that evening, in proportion to the size of the lie, and leaves a permanent betrayal episode.
+Without this step the lie board fills up while trust never moves, no grudge ever forms, and the
+relationship graph stays empty — the first live run demonstrated exactly that.
 
 ### Private information
 
@@ -238,6 +246,19 @@ not an error state.
 - Multi-model competition between agents
 - Realtime dashboard push and replay animation
 - Owner intervention (planting private information with a chosen agent)
+
+## Lessons from the first live run (2026-08-03)
+
+Two things only a real run could show, both now fixed and covered by tests:
+
+- **Reasoning tokens are billed against `max_tokens`.** At `reasoning_effort: high` the model spent
+  an entire 800-token budget thinking and returned an empty string. Between a third and a half of
+  the island said nothing, and the share grew as contexts lengthened. The ceiling is now 3000 and
+  the provider raises a named truncation error instead of passing an empty reply through as
+  silence. Empty replies fell from 32–51% to 3–9%.
+- **Sequential turns made a day take about thirteen minutes**, which put fast-forward out of reach
+  (50 days would have needed eleven hours). A round's calls now overlap, eight at a time, and a
+  day takes just over two minutes.
 
 ## Open questions
 
