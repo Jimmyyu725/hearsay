@@ -36,8 +36,10 @@ module.exports = Object.freeze({
     baseUrl: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
     // Reasoning tokens are billed against this same ceiling. At effort "high" the model
     // spent all 800 of an earlier budget thinking and returned an empty string, which
-    // silenced half the island. Leave generous headroom above the reasoning cost.
-    maxTokens: 3000,
+    // silenced half the island. 3000 was still not enough once grudges accumulated and
+    // there was more to reason about, so a truncated reply is now retried once at double
+    // this ceiling. Leave generous headroom — output tokens are cheap next to the cap.
+    maxTokens: 4000,
     deepseekKeyFile: '/home/jimmy/.config/sim-benchmark/deepseek-v4-pro.txt',
     openaiEnvFile: '/srv/appdata/ledgerwall/.env',
     openaiFallbackModel: 'gpt-5.6-luna',

@@ -13,12 +13,12 @@ function readOpenaiKey() {
   return match ? match[1].trim() : null;
 }
 
-function buildRequestBody(messages) {
+function buildRequestBody(messages, maxTokens = config.llm.maxTokens) {
   return {
     model: config.llm.model,
     messages,
     reasoning_effort: config.llm.effort,
-    max_tokens: config.llm.maxTokens,
+    max_tokens: maxTokens,
     stream: false,
   };
 }
@@ -54,18 +54,30 @@ async function chat(messages, { db, ymd, fetchImpl = globalThis.fetch, apiKey = 
   if (!canSpend(db, ymd)) {
     throw new Error(`daily spend cap of $${config.budget.dailyCapUsd} reached for ${ymd}`);
   }
-  const body = buildRequestBody(messages);
   const deepseekUrl = `${String(config.llm.baseUrl).replace(/\/+$/u, '')}/chat/completions`;
 
   try {
     const key = apiKey || readDeepseekKey();
-    const result = await callEndpoint(deepseekUrl, key, body, fetchImpl);
-    recordSpend(db, ymd, result);
-    return { ...result, provider: 'deepseek' };
+    try {
+      const result = await callEndpoint(deepseekUrl, key, buildRequestBody(messages), fetchImpl);
+      recordSpend(db, ymd, result);
+      return { ...result, provider: 'deepseek' };
+    } catch (error) {
+      // A reply that ran out of room mid-thought is worth exactly one more try with a
+      // bigger ceiling. Everything else falls through to the outage fallback.
+      if (!error.truncated) throw error;
+      const roomier = buildRequestBody(messages, config.llm.maxTokens * 2);
+      const result = await callEndpoint(deepseekUrl, key, roomier, fetchImpl);
+      recordSpend(db, ymd, result);
+      return { ...result, provider: 'deepseek', retriedForTruncation: true };
+    }
   } catch (deepseekError) {
     const fallbackKey = apiKey ? null : readOpenaiKey();
     if (!fallbackKey) throw deepseekError;
-    const fallbackBody = { ...body, model: config.llm.openaiFallbackModel };
+    const fallbackBody = {
+      ...buildRequestBody(messages, config.llm.maxTokens * 2),
+      model: config.llm.openaiFallbackModel,
+    };
     const result = await callEndpoint(
       'https://api.openai.com/v1/chat/completions', fallbackKey, fallbackBody, fetchImpl);
     recordSpend(db, ymd, result);
