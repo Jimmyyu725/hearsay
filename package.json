@@ -1,0 +1,15 @@
+{
+  "name": "hearsay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A persistent island world where 16 LLM agents lie, trade and evolve",
+  "main": "engine/tick.js",
+  "scripts": {
+    "test": "node --test --no-warnings tests/",
+    "tick": "node --no-warnings bin/tick.js",
+    "web": "node --no-warnings web/server.js"
+  },
+  "engines": {
+    "node": ">=22.22.0"
+  }
+}
