@@ -13,3 +13,4 @@ archives/
 
 # Runtime lock held by bin/tick.js
 .tick.pid.lock
+.tick.lock
