@@ -68,30 +68,64 @@ function applyOffer(db, worldId, day, fromId, toId, offer) {
   return true;
 }
 
-async function runRound(db, worldId, day, round, { chatImpl, ymd }) {
-  const agents = livingAgents(db, worldId);
-  const said = [];
+// Run the async mapper over items with at most `limit` in flight, preserving input order
+// in the returned array.
+async function mapWithLimit(items, limit, mapper) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await mapper(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
 
+// Everyone in a round speaks at the same moment, so the LLM calls overlap. Rounds stay
+// ordered, which keeps a day reproducible; sequential calls would make a day take a
+// quarter of an hour and put fast-forward out of reach.
+//
+// Replies are applied in agent order after all of them land. node:sqlite is synchronous
+// and JavaScript is single-threaded, so the writes cannot interleave.
+async function runRound(db, worldId, day, round, { chatImpl, ymd, concurrency }) {
+  const agents = livingAgents(db, worldId);
+  const limit = concurrency || config.conversationConcurrency;
+
+  const pairs = [];
   for (let i = 0; i < agents.length; i += 1) {
     const speakerId = agents[i].id;
     const listenerId = partnerFor(agents, i, round + 1);
     if (!listenerId || listenerId === speakerId) continue;
-
     const context = buildContext(db, worldId, day, speakerId, listenerId);
+    pairs.push({ speakerId, listenerId, context });
+  }
+
+  const replies = await mapWithLimit(pairs, limit, async ({ context }) => {
     const messages = [
       { role: 'system', content: SYSTEM },
       { role: 'user', content: `${context.text}\n\nRound ${round + 1} of ${config.conversationRounds}. Speak.` },
     ];
+    try {
+      return parseReply((await chatImpl(messages, { db, ymd })).content);
+    } catch (error) {
+      // One agent losing its turn must not cost the whole day.
+      return { say: '', claims: [], offer: null, error: error.message };
+    }
+  });
 
-    const reply = await chatImpl(messages, { db, ymd });
-    const parsed = parseReply(reply.content);
+  const said = [];
+  const insert = db.prepare(`INSERT INTO utterances (world_id, day, round, speaker, listener, text)
+    VALUES (?, ?, ?, ?, ?, ?)`);
 
-    db.prepare(`INSERT INTO utterances (world_id, day, round, speaker, listener, text)
-      VALUES (?, ?, ?, ?, ?, ?)`).run(worldId, day, round + 1, speakerId, listenerId, parsed.say);
-
+  for (let i = 0; i < pairs.length; i += 1) {
+    const { speakerId, listenerId } = pairs[i];
+    const parsed = replies[i];
+    insert.run(worldId, day, round + 1, speakerId, listenerId, parsed.say);
     checkClaims(db, worldId, day, speakerId, listenerId, parsed.claims);
     applyOffer(db, worldId, day, speakerId, listenerId, parsed.offer);
-
     said.push({ speaker: speakerId, listener: listenerId, say: parsed.say });
   }
 
@@ -107,4 +141,6 @@ async function runConversations(db, worldId, day, deps) {
   return all;
 }
 
-module.exports = { parseReply, runRound, runConversations, applyOffer, partnerFor, SYSTEM };
+module.exports = {
+  parseReply, runRound, runConversations, applyOffer, partnerFor, mapWithLimit, SYSTEM,
+};

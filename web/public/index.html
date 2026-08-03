@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hearsay</title>
+<style>
+  :root { color-scheme: dark; --bg:#0f1115; --panel:#191b21; --line:#262a33;
+          --text:#e8eaee; --dim:#8b93a7; --red:#e5484d; --green:#30a46c;
+          --blue:#4b7bec; --amber:#f5a524; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  header { padding:14px 18px; border-bottom:1px solid var(--line); display:flex;
+           align-items:baseline; gap:14px; }
+  h1 { font-size:16px; margin:0; letter-spacing:.02em; }
+  .meta { color:var(--dim); font-size:12px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr;
+          gap:12px; padding:12px; height:calc(100vh - 52px); }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px;
+           padding:12px; overflow:auto; min-height:0; }
+  .panel h2 { font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+              color:var(--dim); margin:0 0 10px; font-weight:600; }
+  .row { display:flex; justify-content:space-between; gap:10px; padding:4px 0;
+         border-bottom:1px solid var(--line); }
+  .row:last-child { border-bottom:0; }
+  .event { padding:7px 0; border-bottom:1px solid var(--line); }
+  .event:last-child { border-bottom:0; }
+  .who { font-weight:600; }
+  .said { color:var(--dim); }
+  .count { color:var(--red); font-variant-numeric:tabular-nums; }
+  svg { width:100%; height:100%; display:block; }
+  @media (max-width:860px) { .grid { grid-template-columns:1fr; grid-template-rows:none;
+                                     height:auto; } .panel { height:320px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Hearsay</h1>
+  <span class="meta" id="meta">loading…</span>
+</header>
+<div class="grid">
+  <section class="panel"><h2>Relationships</h2><svg id="graph" viewBox="0 0 400 300"></svg></section>
+  <section class="panel"><h2>Timeline</h2><div id="timeline"></div></section>
+  <section class="panel"><h2>Lie board</h2><div id="lies"></div></section>
+  <section class="panel"><h2>Resource flow</h2><svg id="prices" viewBox="0 0 400 200"></svg></section>
+</div>
+<script>
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs) => {
+  const node = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  return node;
+};
+const escapeText = (value) => String(value ?? '').replace(/[<>&]/g, '');
+
+function drawGraph(snap) {
+  const svg = document.getElementById('graph');
+  svg.textContent = '';
+  const living = snap.agents.filter(a => a.alive);
+  const pos = new Map();
+  living.forEach((a, i) => {
+    const angle = (i / living.length) * Math.PI * 2 - Math.PI / 2;
+    pos.set(a.id, { x: 200 + Math.cos(angle) * 115, y: 150 + Math.sin(angle) * 110, name: a.name });
+  });
+  for (const e of snap.edges) {
+    const from = pos.get(e.subject); const to = pos.get(e.object);
+    if (!from || !to) continue;
+    svg.appendChild(el('line', {
+      x1: from.x, y1: from.y, x2: to.x, y2: to.y,
+      stroke: e.trust < 0 ? 'var(--red)' : 'var(--green)',
+      'stroke-width': Math.max(1, Math.min(4, Math.abs(e.trust) / 25)),
+      'stroke-opacity': 0.75,
+    }));
+  }
+  for (const [, p] of pos) {
+    svg.appendChild(el('circle', { cx: p.x, cy: p.y, r: 11, fill: 'var(--blue)' }));
+    const label = el('text', { x: p.x, y: p.y + 24, 'text-anchor': 'middle',
+      fill: 'var(--dim)', 'font-size': 9 });
+    label.textContent = p.name;
+    svg.appendChild(label);
+  }
+}
+
+function drawTimeline(snap) {
+  document.getElementById('timeline').innerHTML = snap.timeline.map(t =>
+    `<div class="event"><div class="who">day ${t.day} · ${escapeText(t.speaker)} → ${escapeText(t.listener)}</div>` +
+    `<div class="said">${t.text ? escapeText(t.text) : '(said nothing)'}</div></div>`
+  ).join('') || '<div class="said">nothing has happened yet</div>';
+}
+
+function drawLies(snap) {
+  document.getElementById('lies').innerHTML = snap.lies.map(l =>
+    `<div class="row"><span>${escapeText(l.name)}</span><span class="count">${l.count}</span></div>`
+  ).join('') || '<div class="said">nobody has lied yet</div>';
+}
+
+function drawPrices(snap) {
+  const svg = document.getElementById('prices');
+  svg.textContent = '';
+  const series = { food: 'var(--amber)', wood: 'var(--blue)', medicine: 'var(--green)' };
+  const max = Math.max(1, ...snap.prices.flatMap(p => [p.food, p.wood, p.medicine]));
+  for (const [key, colour] of Object.entries(series)) {
+    if (snap.prices.length < 2) continue;
+    const points = snap.prices.map((p, i) =>
+      `${(i / (snap.prices.length - 1)) * 390 + 5},${190 - (p[key] / max) * 180}`).join(' ');
+    svg.appendChild(el('polyline', { points, fill: 'none', stroke: colour, 'stroke-width': 2 }));
+  }
+}
+
+async function refresh() {
+  const snap = await (await fetch('/api/snapshot')).json();
+  document.getElementById('meta').textContent =
+    `era ${snap.era} · day ${snap.day} · ${snap.agents.filter(a => a.alive).length} alive`;
+  drawGraph(snap); drawTimeline(snap); drawLies(snap); drawPrices(snap);
+}
+
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>

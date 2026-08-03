@@ -1,0 +1,15 @@
+[Unit]
+Description=Hearsay dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=jimmy
+WorkingDirectory=/home/jimmy/projects/hearsay
+Environment=PORT=8123
+Environment=HEARSAY_DB=/home/jimmy/projects/hearsay/world.db
+ExecStart=/usr/bin/node --no-warnings web/server.js
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

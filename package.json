@@ -5,7 +5,7 @@
   "description": "A persistent island world where 16 LLM agents lie, trade and evolve",
   "main": "engine/tick.js",
   "scripts": {
-    "test": "node --test --no-warnings tests/",
+    "test": "node --test --no-warnings \"tests/*.test.js\"",
     "tick": "node --no-warnings bin/tick.js",
     "web": "node --no-warnings web/server.js"
   },

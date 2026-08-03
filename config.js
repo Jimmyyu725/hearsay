@@ -11,6 +11,11 @@ module.exports = Object.freeze({
   dailyProduction: { food: 10, wood: 6, medicine: 2 },
 
   conversationRounds: 6,
+
+  // How many agents speak concurrently within a round. Sequential turns made one island
+  // day take about a quarter of an hour, which put fast-forward out of reach.
+  conversationConcurrency: 8,
+
   starvationDeathDays: 3,
 
   trust: {
