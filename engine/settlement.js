@@ -2,7 +2,29 @@
 const config = require('../config');
 const { recordLedger } = require('../memory/ledger');
 const { recordEpisode } = require('../memory/episodes');
-const { decayGoodwill } = require('../memory/impressions');
+const { decayGoodwill, adjustTrust } = require('../memory/impressions');
+
+// The island is small: at the end of the day everyone sees who actually ate and who was
+// holding out. Every lie told during the day is therefore discovered at settlement.
+//
+// Without this step lies had no social consequence at all — the lie board filled up while
+// trust never moved, so grudges never formed and the relationship graph stayed empty.
+// The permanent 'betrayal' episode is what makes the memory asymmetry bite.
+function revealLies(db, worldId, day) {
+  const lies = db.prepare(
+    'SELECT speaker, target, resource, claimed, truth FROM lies WHERE world_id = ? AND day = ?')
+    .all(worldId, day);
+
+  for (const lie of lies) {
+    const severity = Math.abs(lie.truth - lie.claimed);
+    adjustTrust(db, worldId, lie.target, lie.speaker, -(10 + severity * 5), day,
+      `lied to me about ${lie.resource}`);
+    recordEpisode(db, worldId, day, lie.target, 'betrayal',
+      `#${lie.speaker} claimed ${lie.claimed} ${lie.resource} but held ${lie.truth}`, lie.speaker);
+  }
+
+  return lies;
+}
 
 function settle(db, worldId, day) {
   const living = db.prepare('SELECT * FROM agents WHERE world_id = ? AND alive = 1 ORDER BY id').all(worldId);
@@ -39,6 +61,7 @@ function settle(db, worldId, day) {
     }
   }
 
+  const revealed = revealLies(db, worldId, day);
   decayGoodwill(db, worldId, day);
 
   db.prepare(`INSERT INTO days (world_id, day, summary, starved, eliminated)
@@ -49,7 +72,7 @@ function settle(db, worldId, day) {
       `${ate.length} ate, ${starved.length} went hungry, ${eliminated.length} eliminated`,
       starved.length, eliminated.length);
 
-  return { ate, starved, eliminated };
+  return { ate, starved, eliminated, revealed: revealed.length };
 }
 
-module.exports = { settle };
+module.exports = { settle, revealLies };

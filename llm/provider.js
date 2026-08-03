@@ -33,10 +33,18 @@ async function callEndpoint(url, apiKey, body, fetchImpl) {
   const json = await response.json();
   const content = json?.choices?.[0]?.message?.content;
   if (typeof content !== 'string') throw new Error('LLM returned no content');
+  const tokensOut = json?.usage?.completion_tokens || 0;
+  // An empty body at the token ceiling means reasoning ate the whole budget. Name it,
+  // rather than letting it look like an agent that chose to stay quiet.
+  if (content.trim() === '' && tokensOut >= body.max_tokens) {
+    const error = new Error(`LLM truncated by max_tokens (${body.max_tokens}) before emitting content`);
+    error.truncated = true;
+    throw error;
+  }
   return {
     content,
     tokensIn: json?.usage?.prompt_tokens || 0,
-    tokensOut: json?.usage?.completion_tokens || 0,
+    tokensOut,
   };
 }
 
